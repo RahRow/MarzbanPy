@@ -1,4 +1,6 @@
 from contextlib import AbstractContextManager
+from typing import Self
+
 from httpx import Client, URL
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -6,10 +8,10 @@ from functools import wraps
 from exceptions import (
     BearerRequired,
     BadResponse,
-    ExistanceError,
+    ExistenceError,
     PermissionDenied,
     ValidationError,
-    NotExistsError,
+    NotExistsError, AuthenticationFailed,
 )
 from models import (
     AccessToken,
@@ -25,6 +27,7 @@ from models import (
 )
 from datetime import datetime
 
+
 class MarzbanState(Enum):
     UNOPENED = auto()
     OPENED = auto()
@@ -38,15 +41,21 @@ class MarzbanState(Enum):
 
 @dataclass
 class Marzban(AbstractContextManager):
-    def __init__(self, base_url: URL | str) -> None:
+    base_url: URL | str
+
+    _state: MarzbanState
+    _bearer: str | None
+    _admin: Admin
+    _login_attempts: int
+
+    def __init__(self, base_url: URL | str, admin: Admin) -> None:
         if isinstance(base_url, str):
             base_url = URL(base_url)
 
         self.base_url = base_url
-
         self._state = MarzbanState.UNOPENED
-
-        self.__bearer = None
+        self._bearer = None
+        self._admin = admin
 
     def close(self):
         if self._state != MarzbanState.CLOSED:
@@ -83,12 +92,19 @@ class Marzban(AbstractContextManager):
             @wraps(func)
             def wrapper(*args, **kwargs):
                 args = list(args)
-                self = args[0]
+                self: Self = args[0]
                 args = tuple(args)
 
                 if force_bearer:
-                    if self.__bearer is None:
-                        raise BearerRequired("Bearer Token should be created")
+                    if self._bearer is None:
+                        try:
+                            self.__authenticate()
+
+                        except AuthenticationFailed:
+                            self.__authenticate()
+
+                        except ValidationError:
+                            raise AuthenticationFailed("Authentication failed.")
 
                 if self._state == MarzbanState.UNOPENED:
                     self.__client = Client()
@@ -106,7 +122,7 @@ class Marzban(AbstractContextManager):
         return decorator
 
     @__flush_state(force_bearer=False)
-    def get_admin_token(self, admin: Admin):
+    def __authenticate(self, admin: Admin):
         request = self.__client.post(
             self.base_url.join("/api/admin/token"),
             data={"username": admin.username, "password": admin.password},
@@ -118,12 +134,14 @@ class Marzban(AbstractContextManager):
                 access_token=response.get("access_token"),
                 token_type=response.get("token_type"),
             )
-            self.__bearer = result.access_token
-            self.__client.headers.update({"Authorization": f"Bearer {self.__bearer}"})
+            self._bearer = result.access_token
+            self.__client.headers.update({"Authorization": f"Bearer {self._bearer}"})
             return result
 
         elif request.status_code == 401:
             raise ValidationError("Invalid Login Credential")
+
+        raise AuthenticationFailed("Authentication Failed")
 
     @__flush_state()
     def get_current_admin(self):
@@ -155,7 +173,7 @@ class Marzban(AbstractContextManager):
 
         match response.get("detail"):
             case "Admin already exists":
-                raise ExistanceError("Admin already exists")
+                raise ExistenceError("Admin already exists")
             case "You're not allowed":
                 raise PermissionDenied(
                     "Permission denied for this bearer token and admin user"
@@ -220,7 +238,7 @@ class Marzban(AbstractContextManager):
                     raise BadResponse("I/O Conflict")
 
         return admin
-    
+
     @__flush_state()
     def get_admins(self):
         request = self.__client.get(self.base_url.join("/api/admins"))
@@ -242,11 +260,11 @@ class Marzban(AbstractContextManager):
 
         for user in response:
             yield Admin(username=user.get("username"), is_sudo=user.get("is_sudo"))
-    
+
     @__flush_state()
     def get_admin(self, admin: Admin):
         request = self.__client.get(self.base_url.join(f"/api/admins?username={admin.username}"))
-        
+
         response = request.json()
 
         for user in response:
@@ -254,23 +272,23 @@ class Marzban(AbstractContextManager):
 
     @__flush_state()
     def subscription(self, subscription: Subscription):
-        request = self.__client.get( 
+        request = self.__client.get(
             self.base_url.join(f"/sub/{subscription.token}/{subscription.client_type}")
         )
-        
+
         return request.text
-    
+
     def subscription_url_generator(self, subscription: Subscription) -> str:
         return str(self.base_url.join(subscription.url))
-    
+
     @__flush_state()
     def subscription_info(self, subscription: Subscription) -> SubscriptionInfo:
         request = self.__client.get(
             self.base_url.join(f"/sub/{subscription.token}/info")
         )
-        
+
         response = request.json()
-        
+
         return SubscriptionInfo(
             proxies=[Proxy(name=proxy.get("name"), id=proxy.get("id")) for proxy in response.get("proxies")],
             expire=response.get("expire"),
@@ -287,29 +305,29 @@ class Marzban(AbstractContextManager):
                 for inbound in response.get('inbounds')
             ],
             note=response.get("note"),
-            sub_updated_at=datetime.strftime(response.get("sub_updated_at")),
+            sub_updated_at=datetime.strptime(response.get("sub_updated_at")),
             sub_last_user_agent=response.get("sub_last_user_agent"),
-            online_at=datetime.strftime(response.get("online_at")),
+            online_at=datetime.strptime(response.get("online_at")),
             on_hold_expire_duration=response.get("on_hold_expire_duration"),
-            on_hold_timeout=datetime.strftime(response.get("on_hold_timeout")),
+            on_hold_timeout=datetime.strptime(response.get("on_hold_timeout")),
             username=response.get("username"),
             status=response.get("status"),
             used_traffic=response.get("used_traffic"),
             lifetime_used_traffic=response.get("lifetime_used_traffic"),
-            created_at=datetime.strftime(response.get("created_at")),
+            created_at=datetime.strptime(response.get("created_at")),
             links=response.get("links"),
             subscription_url=response.get("subscription_url"),
             excluded_inbounds=response.get("excluded_inbounds")
         )
-        
+
     @__flush_state()
     def get_system_stats(self):
         request = self.__client.get(
             "/api/system"
         )
-        
+
         response = request.json()
-        
+
         return SystemStats(
             version=response.get("version"),
             mem_total=response.get("mem_total"),
@@ -323,16 +341,16 @@ class Marzban(AbstractContextManager):
             incoming_bandwidth_speed=response.get("incoming_bandwidth_speed"),
             outgoing_bandwidth_speed=response.get("outgoing_bandwidth_speed")
         )
-        
+
     @__flush_state()
     def get_inbounds(self):
         request = self.__client.get(
             self.base_url.join("/api/inbounds")
         )
-        
+
         response = request.json()
         result = {}
-        
+
         for key in response.keys():
             result[key] = [
                 Inbound(
@@ -344,17 +362,17 @@ class Marzban(AbstractContextManager):
                 )
                 for inbound in response.get(key)
             ]
-        
+
         return result
-    
+
     @__flush_state()
     def iget_inbounds(self):
         request = self.__client.get(
             self.base_url.join("/api/inbounds")
         )
-        
+
         response = request.json()
-        
+
         for key in response.keys():
             result = {
                 key: [
@@ -370,14 +388,14 @@ class Marzban(AbstractContextManager):
             }
 
             yield result
-    
-    #TODO
+
+    # TODO
     @__flush_state()
     def get_hosts(self):
         request = self.__client.get(
             self.base_url.join("/api/hosts")
         )
-    
+
     @__flush_state
     def modify_hosts(self):
         pass

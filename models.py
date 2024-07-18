@@ -1,8 +1,6 @@
-from dataclasses import dataclass
 from datetime import datetime
 
 
-@dataclass
 class AccessToken:
     access_token: str
     token_type: str
@@ -12,14 +10,13 @@ class AccessToken:
         self.token_type = token_type
 
 
-@dataclass
 class Admin:
     username: str
-    is_sudo: bool
+    is_sudo: bool | None
     password: str
 
     def __init__(
-        self, *, username: str, is_sudo: bool = True, password: str = None
+            self, *, username: str, is_sudo: bool = None, password: str = None
     ) -> None:
         self.username = username
         self.is_sudo = is_sudo
@@ -35,7 +32,6 @@ class Proxy:
         self.id = id
 
 
-@dataclass
 class Subscription:
     token: str
     url: str
@@ -71,22 +67,21 @@ class ClientType:
     V2RAY = "v2ray"
 
 
-@dataclass
 class Inbound:
     tag: str
     protocol: str
     network: str
     tls: str
     port: int
-    
+
     def __init__(
-        self,
-        *,
-        tag: str,
-        protocol: str,
-        network: str,
-        tls: str,
-        port: int
+            self,
+            *,
+            tag: str,
+            protocol: str,
+            network: str,
+            tls: str,
+            port: int
     ):
         self.tag = tag
         self.protocol = protocol
@@ -94,13 +89,13 @@ class Inbound:
         self.tls = tls
         self.port = port
 
-@dataclass
+
 class SubscriptionInfo:
     proxies: list[Proxy]
     expire: int | None
     data_limit: int
     data_limit_reset_strategy: int | str
-    inbounds: list[str]
+    inbounds: list[Inbound]
     note: str | None
     sub_updated_at: datetime | None
     sub_last_user_agent: str | None
@@ -117,27 +112,27 @@ class SubscriptionInfo:
     excluded_inbounds: list[str]
 
     def __init__(
-        self,
-        *,
-        proxies: list[Proxy],
-        expire: int | None,
-        data_limit: int,
-        data_limit_reset_strategy: int | str,
-        inbounds: list[str],
-        note: str | None,
-        sub_updated_at: datetime | None,
-        sub_last_user_agent: str | None,
-        online_at: datetime | None,
-        on_hold_expire_duration: int | None,
-        on_hold_timeout: datetime | None,
-        username: str,
-        status: Status,
-        used_traffic: int,
-        lifetime_used_traffic: int,
-        created_at: datetime,
-        links: list[str],
-        subscription_url: str,
-        excluded_inbounds: list[str],
+            self,
+            *,
+            proxies: list[Proxy],
+            expire: int | None,
+            data_limit: int,
+            data_limit_reset_strategy: int | str,
+            inbounds: list[Inbound],
+            note: str | None,
+            sub_updated_at: datetime | None,
+            sub_last_user_agent: str | None,
+            online_at: datetime | None,
+            on_hold_expire_duration: int | None,
+            on_hold_timeout: datetime | None,
+            username: str,
+            status: Status,
+            used_traffic: int,
+            lifetime_used_traffic: int,
+            created_at: datetime,
+            links: list[str],
+            subscription_url: str,
+            excluded_inbounds: list[str],
     ):
         self.proxies = proxies
         self.expire = expire
@@ -159,7 +154,7 @@ class SubscriptionInfo:
         self.subscription_url = subscription_url
         self.excluded_inbounds = excluded_inbounds
 
-@dataclass
+
 class SystemStats:
     version: str
     mem_total: int
@@ -174,19 +169,19 @@ class SystemStats:
     outgoing_bandwidth_speed: int
 
     def __init__(
-        self,
-        *,
-        version: str,
-        mem_total: int,
-        mem_used: int,
-        cpu_cores: int,
-        cpu_usage: int,
-        total_user: int,
-        users_active: int,
-        incoming_bandwidth: int,
-        outgoing_bandwidth: int,
-        incoming_bandwidth_speed: int,
-        outgoing_bandwidth_speed: int,
+            self,
+            *,
+            version: str,
+            mem_total: int,
+            mem_used: int,
+            cpu_cores: int,
+            cpu_usage: int,
+            total_user: int,
+            users_active: int,
+            incoming_bandwidth: int,
+            outgoing_bandwidth: int,
+            incoming_bandwidth_speed: int,
+            outgoing_bandwidth_speed: int,
     ) -> None:
         self.version = version
         self.mem_total = mem_total
