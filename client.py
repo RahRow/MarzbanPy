@@ -1,3 +1,4 @@
+import json
 from contextlib import AbstractContextManager
 from typing import Self
 
@@ -43,17 +44,17 @@ class MarzbanState(Enum):
 class Marzban(AbstractContextManager):
     base_url: URL | str
 
-    _state: MarzbanState
     _bearer: str | None
     _admin: Admin
     _login_attempts: int
+    _state: MarzbanState = MarzbanState.UNOPENED
 
     def __init__(self, base_url: URL | str, admin: Admin) -> None:
         if isinstance(base_url, str):
             base_url = URL(base_url)
 
         self.base_url = base_url
-        self._state = MarzbanState.UNOPENED
+        self._state = MarzbanState.OPENED
         self._bearer = None
         self._admin = admin
 
@@ -98,13 +99,16 @@ class Marzban(AbstractContextManager):
                 if force_bearer:
                     if self._bearer is None:
                         try:
-                            self.__authenticate()
+                            return self.__authenticate()
 
                         except AuthenticationFailed:
-                            self.__authenticate()
+                            return self.__authenticate()
 
                         except ValidationError:
-                            raise AuthenticationFailed("Authentication failed.")
+                            raise AuthenticationFailed("Authentication failed duo invalid login credentials.")
+
+                        except json.JSONDecodeError:
+                            raise AuthenticationFailed("Authentication failed for bad server response.")
 
                 if self._state == MarzbanState.UNOPENED:
                     self.__client = Client()
